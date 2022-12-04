@@ -2,10 +2,14 @@ fx_version 'cerulean'
 
 game 'gta5'
 
-author 'MiiMii1205'
+author 'MiiMii1205 and Pirfox'
 description 'A pleasant, simple and fast NoClip script for FiveM'
-version '1.3.0'
-repository 'https://github.com/MiiMii1205/noclipper'
+version '1.4.0'
+repository 'https://github.com/Pirfox/noclipper'
 
-client_script 'Scripts/noclip.lua'
+client_scripts {
+    'config.lua',
+    'Scripts/noclip.lua',
+}
+
 export 'ToggleNoClipMode'

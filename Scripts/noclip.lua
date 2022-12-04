@@ -1,19 +1,22 @@
 --[[
   * Created by MiiMii1205
+  * Updated by Pirfox
   * license MIT
 --]]
 
 -- Constants --
-MOVE_UP_KEY = 20
+MOVE_UP_KEY = 22
 MOVE_DOWN_KEY = 44
-CHANGE_SPEED_KEY = 21
 MOVE_LEFT_RIGHT = 30
 MOVE_UP_DOWN = 31
+CHANGE_SPEED_FAST_KEY = 21
+CHANGE_SPEED_SLOW_KEY = 36 -- left ctrl
 NOCLIP_TOGGLE_KEY = 289
-NO_CLIP_NORMAL_SPEED = 0.5
-NO_CLIP_FAST_SPEED = 2.5
-ENABLE_TOGGLE_NO_CLIP = true
-ENABLE_NO_CLIP_SOUND = true
+
+NO_CLIP_NORMAL_SPEED = Config.speeds.normal or 1
+NO_CLIP_FAST_SPEED = Config.speeds.fast or 10
+NO_CLIP_SLOW_SPEED = Config.speeds.slow or 0.1
+
 
 local eps = 0.01
 local RESSOURCE_NAME = GetCurrentResourceName();
@@ -37,11 +40,17 @@ function ToggleNoClipMode()
     return SetNoClip(not isNoClipping)
 end
 
-function IsControlAlwaysPressed(inputGroup, control) return IsControlPressed(inputGroup, control) or IsDisabledControlPressed(inputGroup, control) end
+function IsControlAlwaysPressed(inputGroup, control)
+    return IsControlPressed(inputGroup, control) or IsDisabledControlPressed(inputGroup, control)
+end
 
-function IsControlAlwaysJustPressed(inputGroup, control) return IsControlJustPressed(inputGroup, control) or IsDisabledControlJustPressed(inputGroup, control) end
+function IsControlAlwaysJustPressed(inputGroup, control)
+    return IsControlJustPressed(inputGroup, control) or IsDisabledControlJustPressed(inputGroup, control)
+end
 
-function Lerp (a, b, t) return a + (b - a) * t end
+function Lerp (a, b, t)
+    return a + (b - a) * t
+end
 
 function IsPedDrivingVehicle(ped, veh)
     return ped == GetPedInVehicleSeat(veh, -1);
@@ -59,9 +68,14 @@ function SetNoClip(val)
         noClippingEntity = playerPed;
 
         if IsPedInAnyVehicle(playerPed, false) then
-            local veh = GetVehiclePedIsIn(playerPed, false);
-            if IsPedDrivingVehicle(playerPed, veh) then
-                noClippingEntity = veh;
+            if Config.EnableNoClipVeh then
+                local veh = GetVehiclePedIsIn(playerPed, false);
+                if IsPedDrivingVehicle(playerPed, veh) then
+                    noClippingEntity = veh;
+                end
+            else
+                -- Ped get out of vehicle
+                KnockPedOffVehicle(playerPed)
             end
         end
 
@@ -69,14 +83,12 @@ function SetNoClip(val)
 
         isNoClipping = val;
 
-        if ENABLE_NO_CLIP_SOUND then
-
+        if Config.EnableNoClipSound then
             if isNoClipping then
                 PlaySoundFromEntity(-1, "SELECT", playerPed, "HUD_LIQUOR_STORE_SOUNDSET", 0, 0)
             else
                 PlaySoundFromEntity(-1, "CANCEL", playerPed, "HUD_LIQUOR_STORE_SOUNDSET", 0, 0)
             end
-
         end
 
         TriggerEvent('msgprinter:addMessage', ((isNoClipping and ":airplane: No-clip enabled") or ":rock: No-clip disabled"), GetCurrentResourceName());
@@ -87,9 +99,11 @@ function SetNoClip(val)
             TriggerEvent('instructor:add-instruction', { MOVE_LEFT_RIGHT, MOVE_UP_DOWN }, "move", RESSOURCE_NAME);
             TriggerEvent('instructor:add-instruction', { MOVE_UP_KEY, MOVE_DOWN_KEY }, "move up/down", RESSOURCE_NAME);
             TriggerEvent('instructor:add-instruction', { 1, 2 }, "Turn", RESSOURCE_NAME);
-            TriggerEvent('instructor:add-instruction', CHANGE_SPEED_KEY, "(hold) fast mode", RESSOURCE_NAME);
+            TriggerEvent('instructor:add-instruction', CHANGE_SPEED_FAST_KEY, "(hold) fast mode", RESSOURCE_NAME);
+            TriggerEvent('instructor:add-instruction', CHANGE_SPEED_SLOW_KEY, "(hold) slow mode", RESSOURCE_NAME);
             TriggerEvent('instructor:add-instruction', NOCLIP_TOGGLE_KEY, "Toggle No-clip", RESSOURCE_NAME);
             SetEntityAlpha(noClippingEntity, 51, 0)
+            TriggerEvent('esx_status:pauseStatus', true)
 
             -- Start a No CLip thread
             Citizen.CreateThread(function()
@@ -112,14 +126,16 @@ function SetNoClip(val)
 
                     SetEntityVisible(clipped, false, false);
                     SetLocalPlayerVisibleLocally(true);
-                    SetEntityAlpha(clipped, 51, false)
+                    SetEntityAlpha(clipped, 0, false)
 
                     SetEveryoneIgnorePlayer(pPed, true);
                     SetPoliceIgnorePlayer(pPed, true);
 
                     -- `(a and b) or c`, is basically `a ? b : c` --
-                    input = vector3(GetControlNormal(0, MOVE_LEFT_RIGHT), GetControlNormal(0, MOVE_UP_DOWN), (IsControlAlwaysPressed(1, MOVE_UP_KEY) and 1) or ((IsControlAlwaysPressed(1, MOVE_DOWN_KEY) and -1) or 0))
-                    speed = ((IsControlAlwaysPressed(1, CHANGE_SPEED_KEY) and NO_CLIP_FAST_SPEED) or NO_CLIP_NORMAL_SPEED) * ((isClippedVeh and 2.75) or 1)
+                    input = vector3(GetControlNormal(0, MOVE_LEFT_RIGHT), GetControlNormal(0, MOVE_UP_DOWN), (IsControlAlwaysPressed(1, MOVE_UP_KEY) and -1) or ((IsControlAlwaysPressed(1, MOVE_DOWN_KEY) and 1) or 0))
+                    local fastSpeed = (IsControlAlwaysPressed(1, CHANGE_SPEED_FAST_KEY) and NO_CLIP_FAST_SPEED)
+                    local slowSpeed = (IsControlAlwaysPressed(1, CHANGE_SPEED_SLOW_KEY) and NO_CLIP_SLOW_SPEED)
+                    speed = (fastSpeed or slowSpeed or NO_CLIP_NORMAL_SPEED) * ((isClippedVeh and 2.75) or 1)
 
                     MoveInNoClip();
 
@@ -170,7 +186,6 @@ function SetNoClip(val)
                     end
 
                     while not isNoClipping do
-
                         Citizen.Wait(0);
 
                         if (not IsPedFalling(clipped)) and (not IsPedRagdoll(clipped)) then
@@ -188,6 +203,7 @@ function SetNoClip(val)
 
         else
             ResetEntityAlpha(noClippingEntity)
+            TriggerEvent('esx_status:pauseStatus', false)
             TriggerEvent('instructor:flush', RESSOURCE_NAME);
         end
 
@@ -232,6 +248,7 @@ end)
 AddEventHandler('onResourceStop', function(resourceName)
     if resourceName == RESSOURCE_NAME then
         SetNoClip(false);
+        TriggerEvent('esx_status:pauseStatus', false)
         FreezeEntityPosition(noClippingEntity, false);
         SetEntityCollision(noClippingEntity, true, true);
 
@@ -251,7 +268,7 @@ Citizen.CreateThread(function()
     print(STARTUP_STRING)
     TriggerEvent('msgprinter:addMessage', STARTUP_HTML_STRING, GetCurrentResourceName());
 
-    if ENABLE_TOGGLE_NO_CLIP then
+    if Config.EnableToggleNoClip then
 
         RegisterCommand("noClip", function(source, args, rawCommand)
             SetNoClip(tonumber(args[1]) == 1)
